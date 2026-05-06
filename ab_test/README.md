@@ -9,14 +9,12 @@ used by the application.
 
 ## Folder Structure
 
-- `README.md`
-  - This guide.
 
 - `requirements.txt`
   - Python dependencies for the simulated and live A/B tests.
 
 - `first_shell_agent.py`
-  - Minimal copied agent factory needed for the live A/B test.
+  - Minimal agent needed for the live A/B test.
   - Keeps the examiner-facing evaluation independent from the larger application agent prompt.
 
 - `test_simulated_checkpoint_ab.py`
@@ -24,6 +22,9 @@ used by the application.
 
 - `test_live_agent_ab.py`
   - Opt-in live test that runs the local first-shell agent through the Agents SDK.
+
+- `check_ab_significance.py`
+  - Summarizes `live_ab_results.jsonl` and runs paired t-tests on the per-pair `B - A` wall-time and token differences.
 
 - `test_fixture_pairs.py`
   - Validates the fixture manifest and the local material/spectrum lookup helpers.
@@ -62,6 +63,12 @@ used by the application.
   - Uses the local first-shell agent copy (`first_shell_agent.create_first_shell_agent`) + `Runner`.
   - Measures real wall-clock time and real model token usage exposed by the Agents SDK.
   - Spends real model/API tokens.
+
+- `check_ab_significance.py`
+  - Offline significance check for live A/B results.
+  - Treats each fixture pair as one paired observation.
+  - Tests whether the mean `B - A` difference differs from zero using a two-sided paired t-test.
+  - Also reports the mean, standard deviation, and 95% t confidence interval.
 
 - `first_shell_agent.py`
   - Minimal copied agent factory needed for the live A/B test.
@@ -107,20 +114,13 @@ Install the A/B test requirements from this folder:
 python3 -m pip install -r requirements.txt
 ```
 
-For the live test, set:
-
+For the live test, set in .env file:
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export RUN_REAL_AGENT_AB_TEST=1
+OPENAI_API_KEY="your-openai-api-key"
 ```
+Do not commit `.env` or publish real keys.
 
-Optional:
-
-```bash
-export AB_TEST_MODEL="gpt-5.4"
-```
- 
-Do not commit real API keys.
+We ran these experiments with GPT-5.4. To use another model, set `AB_TEST_MODEL`.
 
 ## Run The Simulated Test
 
@@ -187,3 +187,18 @@ python3 -m pytest -q -s test_live_agent_ab.py
 ```
 
 All-pairs mode ignores `LIVE_AB_MATERIAL_ID` and `LIVE_AB_XAS_PATH` overrides so each run uses the manifest's own material and XAS file.
+
+## Run The Significance Check
+
+After generating `live_ab_results.jsonl`, run:
+
+```bash
+python3 check_ab_significance.py
+```
+
+The script computes paired differences as `B - A`, where `A` is the
+restart-from-zero baseline and `B` is checkpoint resume. For wall-clock time, a
+negative mean means checkpoint resume was faster. For token usage, a positive
+mean means checkpoint resume used more tokens. The reported paired t-test checks
+whether the mean paired difference is significantly different from zero at
+`alpha = 0.05`.
